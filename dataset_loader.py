@@ -93,7 +93,7 @@ class LRUCache:
         self.capacity = capacity
         self.cache = OrderedDict()
 
-    def get(self, key: int) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    def get(self, key: int) -> Optional[Any]:
         """Get item from cache, return None if not found."""
         if key not in self.cache:
             return None
@@ -101,7 +101,7 @@ class LRUCache:
         self.cache.move_to_end(key)
         return self.cache[key]
 
-    def put(self, key: int, value: Tuple[np.ndarray, np.ndarray]):
+    def put(self, key: int, value: Any):
         """Put item in cache, evict oldest if full."""
         if key in self.cache:
             self.cache.move_to_end(key)
@@ -133,8 +133,8 @@ class BumpDataset:
         data_dir: Root directory containing 'images', 'labels', 'metadata.jsonl',
                   and 'dataset_config.json' (default: '.')
         cache_size: Maximum number of samples to keep in memory (default: 100)
-        transform: Optional transform to apply to **images**
-        target_transform: Optional transform to apply to **labels**
+        transform: Optional transform compatible with torchvision.transforms.Compose()
+                   that operates on dict with keys 'image' and 'label'
         verify_integrity: Whether to verify data integrity on initialization (default: False)
 
     Attributes:
@@ -146,11 +146,20 @@ class BumpDataset:
         >>> print(f"Dataset loaded with {len(dataset)} samples")
         >>> print(f"Loader version: {dataset.version}")
 
-        >>> # Filter to 3D samples
+        >>> # Filter to 3D samples and split
         >>> dataset_3d = dataset.filter(type='3D')
+        >>> train_ds, test_ds = dataset_3d.split(test_serial_numbers=[2, 9, 12])
 
-        >>> # Split into train/test
-        >>> train_ds, test_ds = dataset_3d.split([2, 9, 12, 13, 14])
+        >>> # Setup transforms
+        >>> from torchvision import transforms
+        >>> norm_func = BumpDataset.get_normalization_transform()
+        >>>
+        >>> def apply_normalization(sample):
+        >>>     sample["image"] = torch.from_numpy(norm_func(sample["image"].numpy())).float()
+        >>>     return sample
+        >>>
+        >>> transform_list = [RandomFlipLR(), RandomCrop(64), ToTensor(), apply_normalization]
+        >>> train_ds.transform = transforms.Compose(transform_list)
     """
 
     # Class-level version attribute
@@ -161,7 +170,6 @@ class BumpDataset:
         data_dir: str = "./data",
         cache_size: int = 100,
         transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
         verify_integrity: bool = False,
     ):
         self.data_dir = Path(data_dir)
@@ -169,7 +177,6 @@ class BumpDataset:
         self.labels_dir = self.data_dir / "labels"
         self.cache_size = cache_size
         self.transform = transform
-        self.target_transform = target_transform
 
         # Load configuration (assumes config is in data_dir)
         self.config = load_dataset_config(self.data_dir / "dataset_config.json")
@@ -392,27 +399,31 @@ class BumpDataset:
             logger.error(f"Error loading {file_path}: {e}")
             raise
 
-    def _load_sample(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Load image and label for a given index."""
-        sample = self.samples[idx]
+    def _load_sample(self, idx: int) -> Dict[str, np.ndarray]:
+        """Load image and label for a given index and return as dict."""
+        sample_meta = self.samples[idx]
 
-        # Load image and label
-        image_data = self._load_nii_file(sample.image_path)
-        label_data = self._load_nii_file(sample.label_path)
+        # Load image and label as numpy arrays
+        image_data = self._load_nii_file(sample_meta.image_path)
+        label_data = self._load_nii_file(sample_meta.label_path)
 
-        # Apply transforms
+        # Create sample dict
+        sample = {
+            "image": image_data,
+            "label": label_data,
+        }
+
+        # Apply transform pipeline (operates on dict)
         if self.transform:
-            image_data = self.transform(image_data)
-        if self.target_transform:
-            label_data = self.target_transform(label_data)
+            sample = self.transform(sample)
 
-        return image_data, label_data
+        return sample
 
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         """
         Get a sample by index.
 
@@ -420,7 +431,8 @@ class BumpDataset:
             idx: Sample index
 
         Returns:
-            Tuple of (image, label) as numpy arrays
+            Dictionary with keys 'image' and 'label' containing numpy arrays or tensors
+            (depending on transforms applied)
 
         Raises:
             IndexError: If idx is out of range
@@ -433,13 +445,13 @@ class BumpDataset:
         if cached is not None:
             return cached
 
-        # Load sample
-        image_data, label_data = self._load_sample(idx)
+        # Load sample (returns dict after transforms)
+        sample = self._load_sample(idx)
 
         # Cache the result
-        self._cache.put(idx, (image_data, label_data))
+        self._cache.put(idx, sample)
 
-        return image_data, label_data
+        return sample
 
     def get_metadata(self, idx: int) -> Dict[str, Any]:
         """
@@ -571,7 +583,6 @@ class BumpDataset:
         subset.labels_dir = self.labels_dir
         subset.cache_size = self.cache_size
         subset.transform = self.transform
-        subset.target_transform = self.target_transform
         subset.config = self.config  # Copy config to subset
 
         # Filter samples
@@ -693,8 +704,8 @@ class BumpDataset:
 
         return train_dataset, test_dataset
 
+    @staticmethod
     def get_normalization_transform(
-        self,
         clip_percentiles: Tuple[float, float] = (1, 99),
     ) -> Callable:
         """
@@ -756,26 +767,26 @@ class BumpDataset:
             >>> dataset_3d = dataset.filter(type='3D')
             >>> train_ds, test_ds = dataset_3d.split(test_serial_numbers=[18, 22, 30])
             >>>
-            >>> # 2. Create normalization transform with percentile clipping
-            >>> norm_fn = train_ds.get_normalization_transform(
-            ...     clip_percentiles=(1, 99)   # Default: clip 1st-99th percentile
-            ... )
+            >>> # 2. Create normalization function (static method)
+            >>> norm_func = BumpDataset.get_normalization_transform(clip_percentiles=(1, 99))
             >>>
-            >>> # 3. Apply same transform to both train and test
-            >>> train_ds.transform = norm_fn
-            >>> test_ds.transform = norm_fn
+            >>> # 3. Create transform that applies normalization
+            >>> def apply_normalization(sample):
+            >>>     sample["image"] = norm_func(sample["image"])
+            >>>     return sample
             >>>
-            >>> # 4. Use with PyTorch DataLoader
-            >>> from torch.utils.data import DataLoader
-            >>> train_loader = DataLoader(train_ds, batch_size=1, shuffle=True)
+            >>> # 4. Use with other transforms
+            >>> from torchvision import transforms
+            >>> transform_list = [RandomFlipLR(), RandomCrop(64), ToTensor(), apply_normalization]
+            >>> train_ds.transform = transforms.Compose(transform_list)
 
         Example - Aggressive Clipping:
             >>> # More aggressive outlier removal (keeps middle 96% of data)
-            >>> norm_fn = train_ds.get_normalization_transform(clip_percentiles=(2, 98))
+            >>> norm_fn = BumpDataset.get_normalization_transform(clip_percentiles=(2, 98))
 
         Example - Conservative Clipping:
             >>> # Less aggressive outlier removal (keeps 99.8% of data)
-            >>> norm_fn = train_ds.get_normalization_transform(clip_percentiles=(0.1, 99.9))
+            >>> norm_fn = BumpDataset.get_normalization_transform(clip_percentiles=(0.1, 99.9))
 
         Note:
             Each sample is normalized independently, so there's no data leakage
