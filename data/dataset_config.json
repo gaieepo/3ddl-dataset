@@ -1,0 +1,27 @@
+{
+  "loader_version": "1.1.0",
+  "test_serial_numbers": [
+    18,
+    22,
+    30,
+    37,
+    42,
+    50,
+    62,
+    63,
+    73,
+    84,
+    85,
+    88,
+    152,
+    153,
+    234
+  ],
+  "train_serial_numbers": [],
+  "notes": [
+    "Configuration for BumpDataset loader",
+    "test_serial_numbers: Serial numbers reserved for test/validation",
+    "train_serial_numbers: Optional - if empty, all non-test serials used for training",
+    "Update this file when changing dataset splits for reproducibility"
+  ]
+}
