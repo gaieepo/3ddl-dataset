@@ -411,6 +411,7 @@ class BumpDataset:
         sample = {
             "image": image_data,
             "label": label_data,
+            "filename": sample_meta.image_filename,
         }
 
         # Apply transform pipeline (operates on dict)
@@ -431,8 +432,8 @@ class BumpDataset:
             idx: Sample index
 
         Returns:
-            Dictionary with keys 'image' and 'label' containing numpy arrays or tensors
-            (depending on transforms applied)
+            Dictionary with keys 'image', 'label', and 'filename' containing numpy arrays
+            or tensors (depending on transforms applied) and the original image filename
 
         Raises:
             IndexError: If idx is out of range
