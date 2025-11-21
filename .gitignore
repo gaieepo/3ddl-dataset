@@ -1,6 +1,8 @@
-__pycache__
+__pycache__/
 .DS_Store
 .claude
+.venv/
+.python-version
 
 archive/
 data/images
