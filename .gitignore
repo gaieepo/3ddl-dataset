@@ -4,6 +4,17 @@ __pycache__/
 .venv/
 .python-version
 
+# Dev related
+test*/
 archive/
-data/images
-data/labels
+
+
+# Data related
+data/**
+
+!data/checksums.sha256
+!data/dataset_config.json
+!data/metadata.jsonl
+!data/
+
+data_*/
