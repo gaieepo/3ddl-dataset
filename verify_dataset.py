@@ -6,8 +6,14 @@ This script validates:
 1. All files exist
 2. File checksums match the stored values
 3. Dataset integrity hash is correct
+
+Usage:
+    python verify_dataset.py [dataset_root]
+
+    If dataset_root is not provided, defaults to ./data
 """
 
+import argparse
 import hashlib
 import re
 from pathlib import Path
@@ -35,7 +41,7 @@ def parse_checksum_file(checksum_path: Path) -> Tuple[Dict[str, str], list, str,
     dataset_integrity_hash = None
     expected_pair_count = 0
 
-    with open(checksum_path, 'r') as f:
+    with open(checksum_path, "r") as f:
         for line in f:
             line = line.strip()
 
@@ -127,12 +133,25 @@ def verify_dataset_integrity(
 
 
 def main():
-    dataset_root = Path(__file__).parent / "data"
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Verify the integrity of the 3D medical imaging dataset.")
+    parser.add_argument(
+        "dataset_root", nargs="?", default=None, help="Path to the dataset root directory (default: ./data)"
+    )
+    args = parser.parse_args()
+
+    # Determine dataset root
+    if args.dataset_root:
+        dataset_root = Path(args.dataset_root)
+    else:
+        dataset_root = Path(__file__).parent / "data"
+
     checksum_path = dataset_root / "checksums.sha256"
 
     print("=" * 80)
     print("Dataset Integrity Verification")
     print("=" * 80)
+    print(f"Dataset root: {dataset_root}")
     print()
 
     # Check if checksum file exists
