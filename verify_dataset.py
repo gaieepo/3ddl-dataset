@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import hashlib
-import re
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -41,7 +40,7 @@ def parse_checksum_file(checksum_path: Path) -> Tuple[Dict[str, str], list, str,
     dataset_integrity_hash = None
     expected_pair_count = 0
 
-    with open(checksum_path, "r") as f:
+    with open(checksum_path) as f:
         for line in f:
             line = line.strip()
 
@@ -174,7 +173,7 @@ def main():
     if files_valid:
         print(f"  ✓ All {len(file_checksums)} files verified successfully")
     else:
-        print(f"  ✗ File verification failed!")
+        print("  ✗ File verification failed!")
         if missing_files:
             print(f"    - {len(missing_files)} missing files")
         if mismatched_files:
@@ -189,10 +188,10 @@ def main():
     )
 
     if integrity_valid:
-        print(f"  ✓ Dataset integrity hash verified")
+        print("  ✓ Dataset integrity hash verified")
     else:
-        print(f"  ✗ Dataset integrity hash mismatch!")
-        print(f"    The dataset may have been modified or corrupted.")
+        print("  ✗ Dataset integrity hash mismatch!")
+        print("    The dataset may have been modified or corrupted.")
 
     print()
 

@@ -15,7 +15,6 @@ import re
 from pathlib import Path
 
 import nibabel as nib
-import numpy as np
 
 
 def compute_sha256(filepath: Path) -> str:
@@ -70,27 +69,10 @@ def classify_type(dimensions):
 
 def main():
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(
-        description="Generate metadata.jsonl file for dataset image/label pairs."
-    )
-    parser.add_argument(
-        "data_dir",
-        nargs="?",
-        default=None,
-        help="Path to the data directory (default: ./data)"
-    )
-    parser.add_argument(
-        "--voxel-spacing",
-        type=float,
-        default=0.75,
-        help="Voxel spacing value (default: 0.75)"
-    )
-    parser.add_argument(
-        "--design",
-        type=str,
-        default="A1",
-        help="Design identifier (default: A1)"
-    )
+    parser = argparse.ArgumentParser(description="Generate metadata.jsonl file for dataset image/label pairs.")
+    parser.add_argument("data_dir", nargs="?", default=None, help="Path to the data directory (default: ./data)")
+    parser.add_argument("--voxel-spacing", type=float, default=0.75, help="Voxel spacing value (default: 0.75)")
+    parser.add_argument("--design", type=str, default="A1", help="Design identifier (default: A1)")
     args = parser.parse_args()
 
     # Determine data directory
@@ -170,13 +152,9 @@ def main():
                 "voxel_spacing": args.voxel_spacing,
                 "dimensions": dimensions,
                 "data_type": dtype,
-                "design": args.design
+                "design": args.design,
             },
-            "label": {
-                "path": f"labels/{label_path.name}",
-                "filename": label_path.name,
-                "sha256": label_hash
-            }
+            "label": {"path": f"labels/{label_path.name}", "filename": label_path.name, "sha256": label_hash},
         }
 
         metadata_entries.append(entry)

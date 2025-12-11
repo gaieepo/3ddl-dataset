@@ -33,15 +33,8 @@ def extract_sort_key(filename: str):
 
 def main():
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(
-        description="Generate SHA256 checksums for dataset image/label pairs."
-    )
-    parser.add_argument(
-        "data_dir",
-        nargs="?",
-        default=None,
-        help="Path to the data directory (default: ./data)"
-    )
+    parser = argparse.ArgumentParser(description="Generate SHA256 checksums for dataset image/label pairs.")
+    parser.add_argument("data_dir", nargs="?", default=None, help="Path to the data directory (default: ./data)")
     args = parser.parse_args()
 
     # Determine data directory

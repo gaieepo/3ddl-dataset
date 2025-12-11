@@ -23,7 +23,7 @@ import logging
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import nibabel as nib
 import numpy as np
@@ -65,7 +65,7 @@ def load_dataset_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
             "notes": ["Default configuration - no splits defined"],
         }
 
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         return json.load(f)
 
 
@@ -273,11 +273,11 @@ class BumpDataset:
 
         if not metadata_path.exists():
             raise FileNotFoundError(
-                f"Metadata file not found: {metadata_path}\n" "The dataset requires a metadata.jsonl file."
+                f"Metadata file not found: {metadata_path}\nThe dataset requires a metadata.jsonl file."
             )
 
         # Read and parse JSONL file
-        with open(metadata_path, 'r') as f:
+        with open(metadata_path) as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -338,7 +338,7 @@ class BumpDataset:
             checksum_path = self.data_dir / "checksums.sha256"
 
             if not checksum_path.exists():
-                logger.warning(f"Checksum file not found: {checksum_path}. " "Skipping integrity verification.")
+                logger.warning(f"Checksum file not found: {checksum_path}. Skipping integrity verification.")
                 return
 
             logger.info("Verifying dataset integrity...")
@@ -376,7 +376,7 @@ class BumpDataset:
             logger.info("Dataset integrity verification passed")
 
         except ImportError:
-            logger.warning("Could not import verify_dataset module. " "Skipping integrity verification.")
+            logger.warning("Could not import verify_dataset module. Skipping integrity verification.")
 
     def _load_nii_file(self, file_path: str) -> np.ndarray:
         """Load a NIfTI file and return as numpy array."""
@@ -547,7 +547,7 @@ class BumpDataset:
             - This method is designed to be extensible for future filter types
         """
         # Validate type if provided
-        if type is not None and type not in ['3D', '2.5D']:
+        if type is not None and type not in ["3D", "2.5D"]:
             raise ValueError(f"type must be '3D' or '2.5D', got: {type}")
 
         # Build combined predicate
