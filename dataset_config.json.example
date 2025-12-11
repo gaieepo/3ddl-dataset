@@ -1,0 +1,6 @@
+{
+  "loader_version": "1.0.0",
+  "test_serial_numbers": [],
+  "train_serial_numbers": [],
+  "notes": ["Default configuration - no splits defined"]
+}
