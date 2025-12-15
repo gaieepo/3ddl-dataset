@@ -606,104 +606,212 @@ class BumpDataset:
         self,
         train_serial_numbers: Optional[List[int]] = None,
         test_serial_numbers: Optional[List[int]] = None,
-    ) -> Tuple["BumpDataset", "BumpDataset"]:
+    ) -> Dict[str, "BumpDataset"]:
         """
-        Split dataset into train and test sets using predefined serial numbers.
+        Split dataset into train and test sets, with optional semi-supervised support.
 
-        You must provide either train_serial_numbers OR test_serial_numbers (not both).
-        The specified serial numbers will be used for that split, and the rest will
-        go into the other split.
+        Supports two modes:
+        1. **Fully Supervised**: Provide only ONE of train_serial_numbers or test_serial_numbers.
+           The specified serial numbers will be used for that split, and the rest will
+           go into the other split. Returns dict with keys: 'train', 'test'.
+
+        2. **Semi-Supervised**: Provide BOTH train_serial_numbers and test_serial_numbers.
+           - train_serial_numbers → labeled training set
+           - test_serial_numbers → test set
+           - remaining serial numbers → unlabeled training set
+           Returns dict with keys: 'labeled_train', 'unlabeled_train', 'test'.
+           Note: All datasets contain full samples with labels; the user controls
+           whether to use labels during training.
 
         Args:
-            train_serial_numbers: List of scan serial numbers for training set
+            train_serial_numbers: List of scan serial numbers for (labeled) training set
             test_serial_numbers: List of scan serial numbers for test set
 
         Returns:
-            Tuple of (train_dataset, test_dataset)
+            Dict mapping split names to BumpDataset instances:
+            - Fully supervised: {'train': BumpDataset, 'test': BumpDataset}
+            - Semi-supervised: {'labeled_train': BumpDataset, 'unlabeled_train': BumpDataset, 'test': BumpDataset}
 
         Examples:
-            >>> # Specify test set (rest goes to train)
+            >>> # Fully supervised: Specify test set (rest goes to train)
             >>> dataset = BumpDataset(data_dir="./data")
-            >>> train_ds, test_ds = dataset.split(test_serial_numbers=[2, 9, 12, 13, 14])
-            >>> print(f"Train: {len(train_ds)}, Test: {len(test_ds)}")
+            >>> splits = dataset.split(test_serial_numbers=[2, 9, 12, 13, 14])
+            >>> print(f"Train: {len(splits['train'])}, Test: {len(splits['test'])}")
 
-            >>> # Specify train set (rest goes to test)
-            >>> train_ds, test_ds = dataset.split(train_serial_numbers=[60, 61, 62])
-            >>> print(f"Train: {len(train_ds)}, Test: {len(test_ds)}")
+            >>> # Fully supervised: Specify train set (rest goes to test)
+            >>> splits = dataset.split(train_serial_numbers=[60, 61, 62])
+            >>> print(f"Train: {len(splits['train'])}, Test: {len(splits['test'])}")
+
+            >>> # Semi-supervised: Specify both (remaining becomes unlabeled)
+            >>> splits = dataset.split(
+            ...     train_serial_numbers=[60, 61, 62],
+            ...     test_serial_numbers=[2, 9, 12]
+            ... )
+            >>> print(f"Labeled: {len(splits['labeled_train'])}, "
+            ...       f"Unlabeled: {len(splits['unlabeled_train'])}, "
+            ...       f"Test: {len(splits['test'])}")
 
         Raises:
-            ValueError: If both or neither arguments are provided
+            ValueError: If neither argument is provided
+            ValueError: If train and test serial numbers overlap
 
         Warning:
             If specified serial numbers are not found in the dataset, they will be
             omitted with a warning. In extreme cases where no serial numbers match,
             one split will be empty and the other will contain all samples.
         """
-        # Validate arguments
-        if train_serial_numbers is not None and test_serial_numbers is not None:
-            raise ValueError(
-                "Cannot specify both train_serial_numbers and test_serial_numbers. "
-                "Provide only one, and the rest will be assigned to the other split."
-            )
+        # Validate arguments: at least one must be provided
         if train_serial_numbers is None and test_serial_numbers is None:
-            raise ValueError("Must specify either train_serial_numbers or test_serial_numbers")
+            raise ValueError("Must specify at least one of train_serial_numbers or test_serial_numbers")
 
-        # Determine which serial numbers to use
-        if test_serial_numbers is not None:
-            split_type = "test"
-            specified_serials = set(test_serial_numbers)
-        else:  # train_serial_numbers is not None (validated above)
-            split_type = "train"
-            specified_serials = set(train_serial_numbers)  # type: ignore
+        # Convert to sets for efficient operations
+        train_serials = set(train_serial_numbers) if train_serial_numbers is not None else None
+        test_serials = set(test_serial_numbers) if test_serial_numbers is not None else None
 
-        # Check for missing serial numbers (warn but continue)
-        missing_serials = specified_serials - self.serial_numbers
-        if missing_serials:
-            logger.warning(
-                f"{split_type.capitalize()} serial numbers not found in dataset: {sorted(missing_serials)}\n"
-                f"  Available serial numbers: {sorted(self.serial_numbers)}\n"
-                f"  These will be omitted from the split."
-            )
+        # Check for overlap between train and test serial numbers
+        if train_serials is not None and test_serials is not None:
+            overlap = train_serials & test_serials
+            if overlap:
+                raise ValueError(
+                    f"Train and test serial numbers must not overlap. Overlapping serial numbers: {sorted(overlap)}"
+                )
 
-        # Filter to only valid serial numbers
-        valid_serials = specified_serials & self.serial_numbers
+        # Determine mode: semi-supervised (both provided) or fully supervised (one provided)
+        semi_supervised = train_serials is not None and test_serials is not None
 
-        if not valid_serials:
-            logger.warning(
-                f"None of the specified {split_type} serial numbers were found in dataset.\n"
-                f"  {split_type.capitalize()} set will be EMPTY, all samples will go to "
-                f"{'train' if split_type == 'test' else 'test'} set."
-            )
+        if semi_supervised:
+            # Semi-supervised mode: both train and test serial numbers provided
+            # Check for missing serial numbers
+            missing_train = train_serials - self.serial_numbers  # type: ignore
+            missing_test = test_serials - self.serial_numbers  # type: ignore
 
-        # Split indices based on which type was specified
-        train_indices = []
-        test_indices = []
+            if missing_train:
+                logger.warning(
+                    f"Train serial numbers not found in dataset: {sorted(missing_train)}\n"
+                    f"  Available serial numbers: {sorted(self.serial_numbers)}\n"
+                    f"  These will be omitted from the split."
+                )
+            if missing_test:
+                logger.warning(
+                    f"Test serial numbers not found in dataset: {sorted(missing_test)}\n"
+                    f"  Available serial numbers: {sorted(self.serial_numbers)}\n"
+                    f"  These will be omitted from the split."
+                )
 
-        for i, sample in enumerate(self.samples):
-            if split_type == "test":
-                # test_serial_numbers specified
-                if sample.scan_serial_number in valid_serials:
+            # Filter to only valid serial numbers
+            valid_train_serials = train_serials & self.serial_numbers  # type: ignore
+            valid_test_serials = test_serials & self.serial_numbers  # type: ignore
+
+            # Unlabeled = all serial numbers not in train or test
+            unlabeled_serials = self.serial_numbers - valid_train_serials - valid_test_serials
+
+            if not valid_train_serials:
+                logger.warning(
+                    "None of the specified train serial numbers were found in dataset.\n"
+                    "  Labeled train set will be EMPTY."
+                )
+            if not valid_test_serials:
+                logger.warning(
+                    "None of the specified test serial numbers were found in dataset.\n  Test set will be EMPTY."
+                )
+            if not unlabeled_serials:
+                logger.warning(
+                    "Train and test serial numbers cover all available serial numbers.\n"
+                    "  Unlabeled train set will be EMPTY."
+                )
+
+            # Split indices into three sets
+            labeled_train_indices = []
+            unlabeled_train_indices = []
+            test_indices = []
+
+            for i, sample in enumerate(self.samples):
+                if sample.scan_serial_number in valid_train_serials:
+                    labeled_train_indices.append(i)
+                elif sample.scan_serial_number in valid_test_serials:
                     test_indices.append(i)
                 else:
-                    train_indices.append(i)
-            else:
-                # train_serial_numbers specified
-                if sample.scan_serial_number in valid_serials:
-                    train_indices.append(i)
-                else:
-                    test_indices.append(i)
+                    unlabeled_train_indices.append(i)
 
-        # Create subsets
-        train_dataset = self._create_subset(train_indices)
-        test_dataset = self._create_subset(test_indices)
+            # Create subsets
+            labeled_train_dataset = self._create_subset(labeled_train_indices)
+            unlabeled_train_dataset = self._create_subset(unlabeled_train_indices)
+            test_dataset = self._create_subset(test_indices)
 
-        logger.info(f"Split completed: {len(train_dataset)} train, {len(test_dataset)} test")
-        if split_type == "test":
-            logger.info(f"Test serial numbers used: {sorted(valid_serials)}")
+            logger.info(
+                f"Semi-supervised split completed: "
+                f"{len(labeled_train_dataset)} labeled train, "
+                f"{len(unlabeled_train_dataset)} unlabeled train, "
+                f"{len(test_dataset)} test"
+            )
+            logger.info(f"Labeled train serial numbers: {sorted(valid_train_serials)}")
+            logger.info(f"Unlabeled train serial numbers: {sorted(unlabeled_serials)}")
+            logger.info(f"Test serial numbers: {sorted(valid_test_serials)}")
+
+            return {
+                "labeled_train": labeled_train_dataset,
+                "unlabeled_train": unlabeled_train_dataset,
+                "test": test_dataset,
+            }
+
         else:
-            logger.info(f"Train serial numbers used: {sorted(valid_serials)}")
+            # Fully supervised mode: only one of train/test serial numbers provided
+            if test_serials is not None:
+                split_type = "test"
+                specified_serials: set[int] = test_serials
+            else:  # train_serials is not None (validated above)
+                split_type = "train"
+                assert train_serials is not None  # for type checker
+                specified_serials = train_serials
 
-        return train_dataset, test_dataset
+            # Check for missing serial numbers (warn but continue)
+            missing_serials = specified_serials - self.serial_numbers
+            if missing_serials:
+                logger.warning(
+                    f"{split_type.capitalize()} serial numbers not found in dataset: {sorted(missing_serials)}\n"
+                    f"  Available serial numbers: {sorted(self.serial_numbers)}\n"
+                    f"  These will be omitted from the split."
+                )
+
+            # Filter to only valid serial numbers
+            valid_serials = specified_serials & self.serial_numbers
+
+            if not valid_serials:
+                logger.warning(
+                    f"None of the specified {split_type} serial numbers were found in dataset.\n"
+                    f"  {split_type.capitalize()} set will be EMPTY, all samples will go to "
+                    f"{'train' if split_type == 'test' else 'test'} set."
+                )
+
+            # Split indices based on which type was specified
+            train_indices = []
+            test_indices = []
+
+            for i, sample in enumerate(self.samples):
+                if split_type == "test":
+                    # test_serial_numbers specified
+                    if sample.scan_serial_number in valid_serials:
+                        test_indices.append(i)
+                    else:
+                        train_indices.append(i)
+                else:
+                    # train_serial_numbers specified
+                    if sample.scan_serial_number in valid_serials:
+                        train_indices.append(i)
+                    else:
+                        test_indices.append(i)
+
+            # Create subsets
+            train_dataset = self._create_subset(train_indices)
+            test_dataset = self._create_subset(test_indices)
+
+            logger.info(f"Split completed: {len(train_dataset)} train, {len(test_dataset)} test")
+            if split_type == "test":
+                logger.info(f"Test serial numbers used: {sorted(valid_serials)}")
+            else:
+                logger.info(f"Train serial numbers used: {sorted(valid_serials)}")
+
+            return {"train": train_dataset, "test": test_dataset}
 
     @staticmethod
     def get_normalization_transform(
