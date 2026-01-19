@@ -816,13 +816,15 @@ class BumpDataset:
     @staticmethod
     def get_normalization_transform(
         clip_percentiles: Tuple[float, float] = (1, 99),
+        method: str = "clip_minmax",
     ) -> Callable:
         """
-        Get a minmax normalization transform with percentile-based clipping to [0, 1].
+        Get a normalization transform with percentile-based clipping.
 
-        This method uses a fixed normalization scheme optimized for semiconductor
-        3D X-ray segmentation: percentile-based clipping followed by minmax
-        normalization to [0, 1] range (similar to ITK-SNAP windowing).
+        This method provides two normalization schemes optimized for semiconductor
+        3D X-ray segmentation:
+        - **clip_minmax**: Percentile clipping followed by minmax normalization to [0, 1]
+        - **clip_zscore**: Percentile clipping followed by z-score normalization (mean=0, std=1)
 
         The normalization is computed **per-sample** (each 3D volume is normalized
         independently). This is critical for X-ray data where intensity ranges vary
@@ -849,28 +851,32 @@ class BumpDataset:
         while preserving the majority of data, preventing gradient instability and
         loss function domination by artifacts.
 
-        **Normalization Steps:**
-        1. Convert to float32
-        2. Compute percentiles (p_low, p_high) from the data
-        3. Clip values to [p_low, p_high] range
-        4. Scale to [0, 1]: (x - p_low) / (p_high - p_low + eps)
+        **Normalization Methods:**
 
-        **Why [0, 1] range?**
-        - Consistent with medical imaging tools (ITK-SNAP, 3D Slicer)
-        - Interpretable: 0 = minimum visible intensity, 1 = maximum visible intensity
-        - Suitable for neural networks with various activation functions
-        - Prevents numerical issues with very large intensity values
+        1. **clip_minmax** (default):
+           - Clip values to [p_low, p_high] percentile range
+           - Scale to [0, 1]: (x - p_low) / (p_high - p_low + eps)
+           - Output range: [0, 1]
+           - Best for: ITK-SNAP compatibility, visualization, sigmoid outputs
+
+        2. **clip_zscore**:
+           - Clip values to [p_low, p_high] percentile range
+           - Standardize: (x - mean) / (std + eps)
+           - Output range: approximately [-3, 3] (depends on data distribution)
+           - Best for: Networks expecting zero-centered inputs, batch normalization
 
         Args:
             clip_percentiles: Tuple of (low, high) percentiles for clipping before
                 normalization. For example, (1, 99) clips values below 1st percentile
-                and above 99th percentile, then scales the clipped range to [0, 1].
-                Default: (1, 99)
+                and above 99th percentile. Default: (1, 99)
+            method: Normalization method to use. Options:
+                - 'clip_minmax': Percentile clipping + minmax to [0, 1] (default)
+                - 'clip_zscore': Percentile clipping + z-score (mean=0, std=1)
 
         Returns:
             Transform function that can be applied to images (numpy arrays)
 
-        Example - RECOMMENDED for UNet/VNet Training:
+        Example - RECOMMENDED for UNet/VNet Training (minmax):
             >>> # 1. Load and split data
             >>> dataset = BumpDataset(data_dir="./data")
             >>> dataset_3d = dataset.filter(type='3D')
@@ -889,6 +895,13 @@ class BumpDataset:
             >>> transform_list = [RandomFlipLR(), RandomCrop(64), ToTensor(), apply_normalization]
             >>> train_ds.transform = transforms.Compose(transform_list)
 
+        Example - Z-score normalization:
+            >>> # Use z-score for networks expecting zero-centered inputs
+            >>> norm_fn = BumpDataset.get_normalization_transform(
+            ...     clip_percentiles=(1, 99),
+            ...     method='clip_zscore'
+            ... )
+
         Example - Aggressive Clipping:
             >>> # More aggressive outlier removal (keeps middle 96% of data)
             >>> norm_fn = BumpDataset.get_normalization_transform(clip_percentiles=(2, 98))
@@ -902,13 +915,11 @@ class BumpDataset:
             concern between train/test. The same normalization function can be
             safely applied to both training and test data.
         """
-        # Minmax normalization with percentile clipping to [0, 1]
-        # This is the fixed normalization scheme for semiconductor X-ray segmentation
-        # Always uses per-sample normalization (critical for X-ray data)
+        if method not in ("clip_minmax", "clip_zscore"):
+            raise ValueError(f"Unknown normalization method: {method}. Supported methods: 'clip_minmax', 'clip_zscore'")
 
-        def per_sample_minmax(x: np.ndarray) -> np.ndarray:
-            """Percentile-clipped minmax normalization computed per sample."""
-            # Convert to float32 for numerical stability
+        def per_sample_clip_minmax(x: np.ndarray) -> np.ndarray:
+            """Percentile-clipped minmax normalization to [0, 1]."""
             v = x.astype(np.float32)
 
             # Compute percentiles
@@ -918,12 +929,33 @@ class BumpDataset:
             # Clip to percentile range
             v = np.clip(v, p_low, p_high)
 
-            # Scale to [0, 1] with epsilon to prevent division by zero
+            # Scale to [0, 1]
             v = (v - p_low) / (p_high - p_low + 1e-8)
 
             return v
 
-        return per_sample_minmax
+        def per_sample_clip_zscore(x: np.ndarray) -> np.ndarray:
+            """Percentile-clipped z-score normalization (mean=0, std=1)."""
+            v = x.astype(np.float32)
+
+            # Compute percentiles
+            p_low = np.percentile(v, clip_percentiles[0])
+            p_high = np.percentile(v, clip_percentiles[1])
+
+            # Clip to percentile range
+            v = np.clip(v, p_low, p_high)
+
+            # Z-score normalization
+            mean = np.mean(v)
+            std = np.std(v)
+            v = (v - mean) / (std + 1e-8)
+
+            return v
+
+        if method == "clip_minmax":
+            return per_sample_clip_minmax
+        else:  # clip_zscore
+            return per_sample_clip_zscore
 
     def clear_cache(self):
         """
