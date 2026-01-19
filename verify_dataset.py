@@ -16,7 +16,6 @@ Usage:
 import argparse
 import hashlib
 from pathlib import Path
-from typing import Dict, Tuple
 
 
 def compute_file_sha256(filepath: Path) -> str:
@@ -28,7 +27,7 @@ def compute_file_sha256(filepath: Path) -> str:
     return sha256_hash.hexdigest()
 
 
-def parse_checksum_file(checksum_path: Path) -> Tuple[Dict[str, str], list, str, int]:
+def parse_checksum_file(checksum_path: Path) -> tuple[dict[str, str], list, str | None, int]:
     """
     Parse the checksum file.
 
@@ -72,7 +71,7 @@ def parse_checksum_file(checksum_path: Path) -> Tuple[Dict[str, str], list, str,
     return file_checksums, ordered_filepaths, dataset_integrity_hash, expected_pair_count
 
 
-def verify_files(file_checksums: Dict[str, str], dataset_root: Path) -> Tuple[bool, list, list]:
+def verify_files(file_checksums: dict[str, str], dataset_root: Path) -> tuple[bool, list, list]:
     """
     Verify all files exist and checksums match.
 
@@ -109,7 +108,7 @@ def verify_files(file_checksums: Dict[str, str], dataset_root: Path) -> Tuple[bo
 
 
 def verify_dataset_integrity(
-    file_checksums: Dict[str, str], ordered_filepaths: list, expected_hash: str, expected_pair_count: int
+    file_checksums: dict[str, str], ordered_filepaths: list, expected_hash: str | None, expected_pair_count: int
 ) -> bool:
     """
     Verify the dataset integrity hash.

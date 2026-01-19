@@ -3,5 +3,5 @@ name = "3ddl-dataset"
 version = "1.1.0"
 description = "Dataset loader for 3DDL WP5 bump dataset"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = ["nibabel>=5.2.1", "numpy>=1.24.4"]

@@ -21,9 +21,10 @@ Version: 1.1.0 (follows semantic versioning: MAJOR.MINOR.PATCH)
 import json
 import logging
 from collections import OrderedDict, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import nibabel as nib
 import numpy as np
@@ -38,7 +39,7 @@ __version__ = "1.1.0"
 
 
 # Dataset configuration loader
-def load_dataset_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
+def load_dataset_config(config_path: Path | None = None) -> dict[str, Any]:
     """
     Load dataset configuration from JSON file.
 
@@ -79,7 +80,7 @@ class BumpMetadata:
     type: str  # '3D' or '2.5D'
     design: str  # 'A1', 'B2', etc.
     voxel_spacing: float  # 0.75um (micrometers)
-    dimensions: Tuple[int, int, int]  # (x, y, z) dimensions
+    dimensions: tuple[int, int, int]  # (x, y, z) dimensions
     image_path: str  # Absolute path to image file
     label_path: str  # Absolute path to label file
     image_filename: str  # Image filename only
@@ -93,7 +94,7 @@ class LRUCache:
         self.capacity = capacity
         self.cache = OrderedDict()
 
-    def get(self, key: int) -> Optional[Any]:
+    def get(self, key: int) -> Any | None:
         """Get item from cache, return None if not found."""
         if key not in self.cache:
             return None
@@ -169,7 +170,7 @@ class BumpDataset:
         self,
         data_dir: str = "./data",
         cache_size: int = 100,
-        transform: Optional[Callable] = None,
+        transform: Callable | None = None,
         verify_integrity: bool = False,
     ):
         self.data_dir = Path(data_dir)
@@ -399,7 +400,7 @@ class BumpDataset:
             logger.error(f"Error loading {file_path}: {e}")
             raise
 
-    def _load_sample(self, idx: int) -> Dict[str, np.ndarray]:
+    def _load_sample(self, idx: int) -> dict[str, np.ndarray]:
         """Load image and label for a given index and return as dict."""
         sample_meta = self.samples[idx]
 
@@ -424,7 +425,7 @@ class BumpDataset:
         """Return the number of samples in the dataset."""
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         """
         Get a sample by index.
 
@@ -454,7 +455,7 @@ class BumpDataset:
 
         return sample
 
-    def get_metadata(self, idx: int) -> Dict[str, Any]:
+    def get_metadata(self, idx: int) -> dict[str, Any]:
         """
         Get metadata for a specific sample.
 
@@ -491,10 +492,10 @@ class BumpDataset:
 
     def filter(
         self,
-        type: Optional[str] = None,
-        serial_numbers: Optional[List[int]] = None,
-        design: Optional[Union[str, List[str]]] = None,
-        predicate: Optional[Callable[[BumpMetadata], bool]] = None,
+        type: str | None = None,
+        serial_numbers: list[int] | None = None,
+        design: str | list[str] | None = None,
+        predicate: Callable[[BumpMetadata], bool] | None = None,
         **kwargs,
     ) -> "BumpDataset":
         """
@@ -576,7 +577,7 @@ class BumpDataset:
         filtered_indices = [i for i, sample in enumerate(self.samples) if combined_predicate(sample)]
         return self._create_subset(filtered_indices)
 
-    def _create_subset(self, indices: List[int]) -> "BumpDataset":
+    def _create_subset(self, indices: list[int]) -> "BumpDataset":
         """Create a subset of the dataset."""
         subset = BumpDataset.__new__(BumpDataset)
         subset.data_dir = self.data_dir
@@ -604,9 +605,9 @@ class BumpDataset:
 
     def split(
         self,
-        train_serial_numbers: Optional[List[int]] = None,
-        test_serial_numbers: Optional[List[int]] = None,
-    ) -> Dict[str, "BumpDataset"]:
+        train_serial_numbers: list[int] | None = None,
+        test_serial_numbers: list[int] | None = None,
+    ) -> dict[str, "BumpDataset"]:
         """
         Split dataset into train and test sets, with optional semi-supervised support.
 
@@ -815,7 +816,7 @@ class BumpDataset:
 
     @staticmethod
     def get_normalization_transform(
-        clip_percentiles: Tuple[float, float] = (1, 99),
+        clip_percentiles: tuple[float, float] = (1, 99),
         method: str = "clip_minmax",
     ) -> Callable:
         """
